@@ -108,6 +108,22 @@ $ export SLACK_CLI_TOKEN='token'
 
 ## Examples and Recipes
 
+### `channel settopic`
+
+```console
+$ # Set channel topic via prompts:
+$ slack channel settopic
+$
+$ # Set channel topic via arguments:
+$ slack channel settopic 'Great topic' '#channel'
+$
+$ # Set channel topic via options:
+$ slack channel settopic --topic 'Great topic' --channel '#channel'
+$
+$ # Set channel topic via short form options:
+$ slack channel settopic -tp 'Great topic' -ch '#channel'
+```
+
 ### `chat send`
 
 ```console
