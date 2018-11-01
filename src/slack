@@ -18,6 +18,7 @@ cmd="${1}" ; shift
 
 # SUBCOMMAND PARSING ##############################################################################
 case "${cmd}${1}" in
+  channelsettopic|\
   chatdelete|chatsend|chatupdate|\
   filedelete|fileinfo|filelist|fileupload|\
   presenceactive|presenceaway|\
@@ -98,6 +99,7 @@ while (( "$#" )); do
     --title-link*|-tl*) titlelink=${2} ; shift ; shift ;;
     --title=*) title=${1/--title=/''} ; shift ;;
     --title*|-ti*) title=${2} ; shift ; shift ;;
+    --topic*|-tp*) topic=${2} ; shift ; shift ;;
     --token=*) token=${1/--token=/''} ; shift ;;
     --token|-tk*) token=${2} ; shift ; shift ;;
     --trace|-x) trace='set -x' ; shift ;;
@@ -107,6 +109,10 @@ while (( "$#" )); do
     --user|-ur*) user=${2} ; shift ; shift ;;
     *)
       case "${cmd}${sub}" in
+        channelsettopic)
+          [ -n "${1}" ] && [ -n "${topic}" ] && [ -z "${channel}" ] && channel=${1}
+          [ -n "${1}" ] && [ -z "${topic}" ] && topic=${1}
+        ;;
         chatdelete)
           [ -n "${1}" ] && [ -n "${timestamp}" ] && [ -z "${channel}" ] && channel=${1}
           [ -n "${1}" ] && [ -z "${timestamp}" ] && timestamp=${1}
@@ -155,6 +161,10 @@ ${trace}
 
 # ARGUMENT AND OPTION PROMPTING ###################################################################
 case "${cmd}${sub}" in
+  channelsettopic)
+    [ -z "${channel}" ] && read -e -p 'Enter channel (e.g. #general): ' channel
+    [ -z "${topic}" ] && read -e -p 'Enter topic (e.g. To discuss general things): ' topic
+  ;;
   chatdelete)
     [ -z "${channel}" ] && read -e -p 'Enter channel (e.g. #general): ' channel
     [ -z "${timestamp}" ] && read -e -p 'Enter timestamp (e.g. 1405894322.002768): ' timestamp
@@ -250,6 +260,19 @@ function jqify() {
   esac
 }
 
+function echannel() {
+  while
+    local _channels=$(\
+      curl -s -X GET "https://slack.com/api/users.conversations?token=${token}&types=public_channel,private_channel&exclude_archived=true&limit=1000&cursor=${_cursor}" 2>&1)
+    local _channelid=$(jq -r ".channels | map(select(.name == \"${channel/##/}\")) | .[].id" <<<${_channels})
+    local _cursor=$(jq -r ".response_metadata.next_cursor" <<<${_channels})
+    [ -n "${_channelid}" ] && echo "${_channelid}"
+    [ -z "${_channelid}" ] && [ -n "${_cursor}" ]
+  do
+    :
+  done
+}
+
 function lchannel() {
   case "${channel}" in
     @*)
@@ -280,6 +303,16 @@ function luser() {
 }
 
 # COMMAND FUNCTIONS ###############################################################################
+function channelsettopic() {
+  local ch=$(echannel)
+  local msg=$(\
+    curl -s -X POST https://slack.com/api/conversations.setTopic \
+      --data-urlencode "channel=$(echannel)" \
+      --data-urlencode "topic=${topic}" \
+      --data-urlencode "token=${token}")
+  jqify "${msg}"
+}
+
 function chatdelete() {
   local msg=$(\
     curl -s -X POST https://slack.com/api/chat.delete \
@@ -294,7 +327,6 @@ function chatdelete() {
 function chatsend() {
   [ -n "${stdin}" ] && [ -z "${text}" ] && text=\`\`\`${stdin//$'\n'/'\n'}\`\`\`
 
-  echo $(attachify)
   local msg=$(\
     curl -s -X POST https://slack.com/api/chat.postMessage \
       --data-urlencode "as_user=true" \
@@ -324,6 +356,9 @@ function help() {
   local bin=${a[${#a[@]}-1]}
 
   echo 'Usage:'
+  echo "  ${bin} channel settopic [<topic> [channel]]"
+  echo '    [--channel|-ch <channel>] [--topic|-tp <topic>]'
+  echo
   echo "  ${bin} chat delete [<timestamp> [channel]]"
   echo '    [--channel|-ch <channel>] [--compact|-c] [--filter|-f <filter>] [--monochrome|-m]'
   echo '    [--timestamp|-ts <timestamp>] [--trace|-x]'
@@ -414,36 +449,39 @@ function help() {
   echo 'Configuration Commands:'
   echo '  init    Initialize'
   echo
+  echo 'Channel Commands:'
+  echo '  channel settopic   Set channel topic'
+  echo
   echo 'Chat Commands:'
-  echo '  chat delete    Delete chat message'
-  echo '  chat send      Send chat message'
-  echo '  chat update    Update chat message'
+  echo '  chat delete        Delete chat message'
+  echo '  chat send          Send chat message'
+  echo '  chat update        Update chat message'
   echo
   echo 'File Commands:'
-  echo '  file delete    Delete file'
-  echo '  file info      Info about file'
-  echo '  file list      List files'
-  echo '  file upload    Upload file'
+  echo '  file delete        Delete file'
+  echo '  file info          Info about file'
+  echo '  file list          List files'
+  echo '  file upload        Upload file'
   echo
   echo 'Presence Commands:'
   echo '  presence active    Active presence'
   echo '  presence away      Away presence'
   echo
   echo 'Reminder Commands:'
-  echo '  reminder add         Add reminder'
-  echo '  reminder complete    Complete reminder'
-  echo '  reminder delete      Delete reminder'
-  echo '  reminder info        Info about reminder'
-  echo '  reminder list        List reminders'
+  echo '  reminder add       Add reminder'
+  echo '  reminder complete  Complete reminder'
+  echo '  reminder delete    Delete reminder'
+  echo '  reminder info      Info about reminder'
+  echo '  reminder list      List reminders'
   echo
   echo 'Snooze Commands:'
-  echo '  snooze end      End snooze'
-  echo '  snooze info     Info about snooze'
-  echo '  snooze start    Start snooze'
+  echo '  snooze end         End snooze'
+  echo '  snooze info        Info about snooze'
+  echo '  snooze start       Start snooze'
   echo
   echo 'Status Commands:'
-  echo '  status clear    Clear status'
-  echo '  status edit     Edit status'
+  echo '  status clear       Clear status'
+  echo '  status edit        Edit status'
   echo
   echo 'More Information:'
   echo '  repo    https://github.com/rockymadden/slack-cli'
@@ -665,6 +703,7 @@ case "${cmd}${sub}" in
   --help|-h) help ; exit 0 ;;
   --version|-v) version ; exit 0 ;;
   init) init ; exit $? ;;
+  channelsettopic|\
   chatdelete|chatsend|chatupdate|\
   filedelete|fileinfo|filelist|fileupload|\
   presenceactive|presenceaway|\
